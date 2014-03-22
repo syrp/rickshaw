@@ -1,3 +1,14 @@
+(function (root, factory) {
+    if (typeof define === 'function' && define.amd) {
+        define(['d3'], function (d3) {
+            return (root.Rickshaw = factory(d3));
+        });
+    } else if (typeof exports === 'object') {
+        module.exports = factory(require('d3'));
+    } else {
+        root.Rickshaw = factory(d3);
+    }
+}(this, function (d3) {
 /* jshint -W079 */ 
 
 var Rickshaw = {
@@ -34,12 +45,6 @@ var Rickshaw = {
 		return JSON.parse(JSON.stringify(obj));
 	}
 };
-
-if (typeof module !== 'undefined' && module.exports) {
-	var d3 = require('d3');
-	module.exports = Rickshaw;
-}
-
 /* Adapted from https://github.com/Jakobo/PTClass */
 
 /*
@@ -1222,7 +1227,7 @@ Rickshaw.Graph.Ajax = Rickshaw.Class.create( {
 
 	request: function() {
 
-		$.ajax( {
+		jQuery.ajax( {
 			url: this.dataURL,
 			dataType: 'json',
 			success: this.success.bind(this),
@@ -1851,21 +1856,21 @@ Rickshaw.Graph.Behavior.Series.Order = function(args) {
 
 	var self = this;
 
-	if (typeof window.$ == 'undefined') {
-		throw "couldn't find jQuery at window.$";
+	if (typeof window.jQuery == 'undefined') {
+		throw "couldn't find jQuery at window.jQuery";
 	}
 
-	if (typeof window.$.ui == 'undefined') {
-		throw "couldn't find jQuery UI at window.$.ui";
+	if (typeof window.jQuery.ui == 'undefined') {
+		throw "couldn't find jQuery UI at window.jQuery.ui";
 	}
 
-	$(function() {
-		$(self.legend.list).sortable( { 
+	jQuery(function() {
+		jQuery(self.legend.list).sortable( {
 			containment: 'parent',
 			tolerance: 'pointer',
 			update: function( event, ui ) {
 				var series = [];
-				$(self.legend.list).find('li').each( function(index, item) {
+				jQuery(self.legend.list).find('li').each( function(index, item) {
 					if (!item.series) return;
 					series.push(item.series);
 				} );
@@ -1877,7 +1882,7 @@ Rickshaw.Graph.Behavior.Series.Order = function(args) {
 				self.graph.update();
 			}
 		} );
-		$(self.legend.list).disableSelection();
+		jQuery(self.legend.list).disableSelection();
 	});
 
 	//hack to make jquery-ui sortable behave
@@ -1896,6 +1901,7 @@ Rickshaw.Graph.Behavior.Series.Toggle = function(args) {
 	var self = this;
 
 	this.addAnchor = function(line) {
+
 		var anchor = document.createElement('a');
 		anchor.innerHTML = '&#10004;';
 		anchor.classList.add('action');
@@ -1962,6 +1968,7 @@ Rickshaw.Graph.Behavior.Series.Toggle = function(args) {
 
 	if (this.legend) {
 
+		var $ = jQuery;
 		if (typeof $ != 'undefined' && $(this.legend.list).sortable) {
 
 			$(this.legend.list).sortable( {
@@ -2293,7 +2300,7 @@ Rickshaw.Graph.JSONP = Rickshaw.Class.create( Rickshaw.Graph.Ajax, {
 
 	request: function() {
 
-		$.ajax( {
+		jQuery.ajax( {
 			url: this.dataURL,
 			dataType: 'jsonp',
 			success: this.success.bind(this),
@@ -2397,6 +2404,8 @@ Rickshaw.Graph.RangeSlider = Rickshaw.Class.create({
 		var element = this.element = args.element;
 		var graph = this.graph = args.graph;
 
+		this.slideCallbacks = [];
+
 		this.build();
 
 		graph.onUpdate( function() { this.update() }.bind(this) );
@@ -2406,8 +2415,10 @@ Rickshaw.Graph.RangeSlider = Rickshaw.Class.create({
 
 		var element = this.element;
 		var graph = this.graph;
+		var $ = jQuery;
 
 		var domain = graph.dataDomain();
+		var self = this;
 
 		$( function() {
 			$(element).slider( {
@@ -2432,9 +2443,14 @@ Rickshaw.Graph.RangeSlider = Rickshaw.Class.create({
 					if (domain[0] == ui.values[0]) {
 						graph.window.xMin = undefined;
 					}
+
 					if (domain[1] == ui.values[1]) {
 						graph.window.xMax = undefined;
 					}
+
+					self.slideCallbacks.forEach(function(callback) {
+						callback(graph, graph.window.xMin, graph.window.xMax);
+					});
 				}
 			} );
 		} );
@@ -2447,6 +2463,7 @@ Rickshaw.Graph.RangeSlider = Rickshaw.Class.create({
 
 		var element = this.element;
 		var graph = this.graph;
+		var $ = jQuery;
 
 		var values = $(element).slider('option', 'values');
 
@@ -2463,6 +2480,10 @@ Rickshaw.Graph.RangeSlider = Rickshaw.Class.create({
 		}
 
 		$(element).slider('option', 'values', values);
+	},
+
+	onSlide: function(callback) {
+		this.slideCallbacks.push(callback);
 	}
 });
 
@@ -2492,6 +2513,8 @@ Rickshaw.Graph.RangeSlider.Preview = Rickshaw.Class.create({
 		this.defaults.gripperColor = d3.rgb(this.defaults.frameColor).darker().toString(); 
 
 		this.configureCallbacks = [];
+		this.slideCallbacks = [];
+
 		this.previews = [];
 
 		args.width = args.width || this.graphs[0].width || this.defaults.width;
@@ -2499,6 +2522,10 @@ Rickshaw.Graph.RangeSlider.Preview = Rickshaw.Class.create({
 
 		this.configure(args);
 		this.render();
+	},
+
+	onSlide: function(callback) {
+		this.slideCallbacks.push(callback);
 	},
 
 	onConfigure: function(callback) {
@@ -2551,12 +2578,14 @@ Rickshaw.Graph.RangeSlider.Preview = Rickshaw.Class.create({
 
 			var graphArgs = Rickshaw.extend({}, parent.config);
 			var height = self.previewHeight / self.graphs.length;
+			var renderer = parent.renderer.name;
 
 			Rickshaw.extend(graphArgs, {
 				element: this.appendChild(document.createElement("div")),
 				height: height,
 				width: self.previewWidth,
-				series: parent.series
+				series: parent.series,
+				renderer: renderer
 			});
 
 			var graph = new Rickshaw.Graph(graphArgs);
@@ -2814,7 +2843,7 @@ Rickshaw.Graph.RangeSlider.Preview = Rickshaw.Class.create({
 			self.graphs.forEach(function(graph) {
 
 				var domainScale = d3.scale.linear()
-					.interpolate(d3.interpolateRound)
+					.interpolate(d3.interpolateNumber)
 					.domain([0, self.previewWidth])
 					.range(graph.dataDomain());
 
@@ -2822,6 +2851,10 @@ Rickshaw.Graph.RangeSlider.Preview = Rickshaw.Class.create({
 					domainScale(frameAfterDrag[0]),
 					domainScale(frameAfterDrag[1])
 				];
+
+				self.slideCallbacks.forEach(function(callback) {
+					callback(graph, windowAfterDrag[0], windowAfterDrag[1]);
+				});
 
 				if (frameAfterDrag[0] === 0) {
 					windowAfterDrag[0] = undefined;
@@ -2831,7 +2864,7 @@ Rickshaw.Graph.RangeSlider.Preview = Rickshaw.Class.create({
 				}
 				graph.window.xMin = windowAfterDrag[0];
 				graph.window.xMax = windowAfterDrag[1];
-				
+
 				graph.update();
 			});
 		}
@@ -3456,8 +3489,14 @@ Rickshaw.Graph.Renderer.Multi = Rickshaw.Class.create( Rickshaw.Graph.Renderer, 
 				.map( function(s) { return s.stack });
 
 			if (!data.length) return;
-
-			var domain = $super(data);
+			
+			var domain = null;
+			if (group.renderer && group.renderer.domain) {
+				domain = group.renderer.domain(data);
+			}
+			else {
+				domain = $super(data);
+			}
 			domains.push(domain);
 		});
 
@@ -3680,6 +3719,7 @@ Rickshaw.Graph.Smoother = Rickshaw.Class.create({
 	build: function() {
 
 		var self = this;
+		var $ = jQuery;
 
 		if (this.element) {
 			$( function() {
@@ -3992,3 +4032,5 @@ Rickshaw.Series.FixedDuration = Rickshaw.Class.create(Rickshaw.Series, {
 	}
 } );
 
+	return Rickshaw;
+}));
